@@ -1,52 +1,116 @@
 import matplotlib.pyplot as plt
-import numpy as np, pandas as pd
+import numpy as np
+import pandas as pd
+import customtkinter as ctk
+from tkinter import filedialog
 
-df = pd.read_csv(r"C:\Users\PRIME\Desktop\dev\immc 26\code\data.csv")
-print(df)
+# ---------------- GUI SETUP ----------------
+ctk.set_appearance_mode("light")
 
+root = ctk.CTk()
+root.title("Calcul de IBH")
+root.geometry("420x320")
+root.resizable(False, False)
 
+df = None
+
+# ---------------- CONFIG IBH ----------------
 config = {
-    # SERVICES DE BASE (Échelle : Valeurs physiques)
-    'revenu':              {'min': 45000, 'max': 500000, 'poids': 0.11}, # FCFA (SMIC à Max)
-    'eau':                 {'min': 20,    'max': 300,    'poids': 0.10}, # Litres / jour / personne
-    'electricite':         {'min': 4,     'max': 24,     'poids': 0.11}, # Heures / jour
-    'internet':            {'min': 0.5,   'max': 20,     'poids': 0.07}, # Mbps (Débit)
+    'revenu': {'min': 45000, 'max': 500000, 'poids': 0.11},
+    'eau': {'min': 20, 'max': 300, 'poids': 0.10},
+    'electricite': {'min': 4, 'max': 24, 'poids': 0.11},
+    'internet': {'min': 0.5, 'max': 20, 'poids': 0.07},
 
-    # SANTÉ & INFRASTRUCTURE (Échelle : Distance et Qualité)
-    'sante':               {'min': 10,    'max': 100,    'poids': 0.10}, # Score d'accès global
-    'distance_hopitaux':   {'min': 20,    'max': 1,      'poids': 0.08}, # Inverse : 20km = 0, 1km = 1
-    'qualite_sys_medical': {'min': 0,     'max': 100,    'poids': 0.04}, # Score qualitatif
+    'sante': {'min': 10, 'max': 100, 'poids': 0.10},
+    'distance_hopitaux': {'min': 1, 'max': 20, 'poids': 0.08},  # corrigé logique
+    'qualite_sys_medical': {'min': 0, 'max': 100, 'poids': 0.04},
 
-    # CADRE DE VIE (Échelle : Perception/Qualité sur 100)
-    'securite':            {'min': 20,    'max': 100,    'poids': 0.10},
-    'routes':              {'min': 0,     'max': 100,    'poids': 0.07},
-    'qualite_routes':      {'min': 0,     'max': 100,    'poids': 0.03},
-    'transport':           {'min': 10,    'max': 100,    'poids': 0.05},
-    'dechets':             {'min': 0,     'max': 100,    'poids': 0.05},
+    'securite': {'min': 20, 'max': 100, 'poids': 0.10},
+    'routes': {'min': 0, 'max': 100, 'poids': 0.07},
+    'qualite_routes': {'min': 0, 'max': 100, 'poids': 0.03},
+    'transport': {'min': 10, 'max': 100, 'poids': 0.05},
+    'dechets': {'min': 0, 'max': 100, 'poids': 0.05},
 
-    # ÉPANOUISSEMENT (Échelle : Perception sur 100)
-    'education':           {'min': 30,    'max': 100,    'poids': 0.05},
-    'loisir':              {'min': 0,     'max': 100,    'poids': 0.02},
-    'nourriture':          {'min': 40,    'max': 100,    'poids': 0.02}
+    'education': {'min': 30, 'max': 100, 'poids': 0.05},
+    'loisir': {'min': 0, 'max': 100, 'poids': 0.02},
+    'nourriture': {'min': 40, 'max': 100, 'poids': 0.02}
 }
 
-# Calcul des scores pour chaque colonne
-for col, param in config.items():
-    # 1. On soustrait le minimum et on divise par la plage (max-min)
-    df[f'score_{col}'] = (df[col] - param['min']) / (param['max'] - param['min'])
-    
-    # 2. On clip : tout ce qui est < 0 devient 0, tout ce qui est > 1 devient 1
-    df[f'score_{col}'] = df[f'score_{col}'].clip(0, 1)
+# ---------------- LABELS ----------------
+title = ctk.CTkLabel(root, text="Calcul de l'IBH", font=("Arial", 16))
+title.pack(pady=10)
 
-# Calcul de l'indice final (Somme pondérée)
-df['IBH'] = sum(df[f'score_{col}'] * param['poids'] for col, param in config.items()) * 100
+status_label = ctk.CTkLabel(root, text="Aucun fichier chargé")
+status_label.pack(pady=5)
 
-ibh_s = np.array(df['IBH'])
+result_label = ctk.CTkLabel(root, text="")
+result_label.pack(pady=5)
 
-n, bins, _ = plt.hist(df['IBH'], bins=10, range=(0, 100), edgecolor='black')
-for i in range(len(n)):
-    print(f"Tranche {bins[i]:.0f}-{bins[i+1]:.0f}% : {int(n[i])} familles")
+# ---------------- LOAD FILE ----------------
+def load_file():
+    global df
 
-plt.xlabel("IBH (%)")
-plt.ylabel("Nombre de familles")
-plt.show()
+    file_path = filedialog.askopenfilename(
+        title="Choisir le fichier CSV",
+        filetypes=[("CSV files", "*.csv")]
+    )
+
+    if not file_path:
+        return
+
+    df = pd.read_csv(file_path)
+    status_label.configure(text="Fichier chargé ✔")
+    print(df.head())
+
+
+# ---------------- CALCUL IBH ----------------
+def calculate_ibh():
+    global df
+
+    if df is None:
+        status_label.configure(text="❌ Aucun fichier chargé")
+        return
+
+    for col, param in config.items():
+        df[f'score_{col}'] = (
+            (df[col] - param['min']) / (param['max'] - param['min'])
+        ).clip(0, 1)
+
+    df['IBH'] = sum(
+        df[f'score_{col}'] * param['poids']
+        for col, param in config.items()
+    ) * 100
+
+    result_label.configure(text=f"IBH calculé ✔ (moyenne: {df['IBH'].mean():.2f})")
+    print(df[['IBH']].head())
+
+
+# ---------------- GRAPH ----------------
+def show_graph():
+    if df is None or 'IBH' not in df.columns:
+        status_label.configure(text="❌ IBH non calculé")
+        return
+
+    n, bins, _ = plt.hist(df['IBH'], bins=10, range=(0, 100), edgecolor='black')
+
+    for i in range(len(n)):
+        print(f"Tranche {bins[i]:.0f}-{bins[i+1]:.0f}% : {int(n[i])} familles")
+
+    plt.xlabel("IBH (%)")
+    plt.ylabel("Nombre de familles")
+    plt.title("Distribution IBH")
+    plt.show()
+
+
+# ---------------- BUTTONS ----------------
+btn_load = ctk.CTkButton(root, text="Charger CSV", command=load_file)
+btn_load.pack(pady=8)
+
+btn_calc = ctk.CTkButton(root, text="Calculer IBH", command=calculate_ibh)
+btn_calc.pack(pady=8)
+
+btn_graph = ctk.CTkButton(root, text="Afficher graphique", command=show_graph)
+btn_graph.pack(pady=8)
+
+
+root.mainloop()
